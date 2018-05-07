@@ -72,4 +72,21 @@ class Copy
         $saver->setCollection($copyMachine->getSaveRecordCollection());
         $saver->save();
     }
+
+    public function copyMany($tableName, $columnName, array $recordsIds)
+    {
+        if (empty($recordsIds)) {
+            return false;
+        }
+
+        $copyMachine = new CopyMachine($this->from);
+
+        foreach ($recordsIds as $recordId) {
+            $copyMachine->selectRecordFrom($tableName, $columnName, $recordId);
+        }
+
+        $saver = new Saver($this->to);
+        $saver->setCollection($copyMachine->getSaveRecordCollection());
+        $saver->save();
+    }
 }

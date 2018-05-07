@@ -16,6 +16,8 @@ class Saver
      */
     private $collection = [];
     private $pdohTo;
+    private $lastCount = 0;
+    private $sameLastCountCount = 0;
 
     public function __construct(DBUser $to)
     {
@@ -69,7 +71,15 @@ class Saver
             $i++;
 
             if($i >= $count) {
+                if ($this->lastCount === $count) {
+                    $this->sameLastCountCount++;
+                }
+                $this->lastCount = $count;
                 $i = 0;
+            }
+
+            if ($this->sameLastCountCount >= 5) {
+                break;
             }
         }
     }

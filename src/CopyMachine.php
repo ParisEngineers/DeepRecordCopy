@@ -50,6 +50,11 @@ class CopyMachine
      */
     public function selectRecordFrom($tableName, $columnName, $recordId, $isForeign = false)
     {
+        if ((!$tableName || !$columnName || !$recordId)) {
+            Logger::log("Błędne argumenty dla selectRecordFrom \n", 'red', null, 1);
+            return true;
+        }
+
         $key = $tableName.'-'.$columnName.'-'.$recordId;
 
         if (isset($this->isDownloaded[$key])) {
@@ -154,7 +159,7 @@ class CopyMachine
      */
     private function getRecordToCopy($tableName, $columnName, $recordId)
     {
-        $sth = $this->pdohFrom->getPdo()->prepare("SELECT * FROM {$tableName} WHERE {$columnName} = :recordId");
+        $sth = $this->pdohFrom->getPdo()->prepare("SELECT * FROM `{$tableName}` WHERE `{$columnName}` = :recordId");
 
         $sth->execute([
             ':recordId' => $recordId,
@@ -166,8 +171,14 @@ class CopyMachine
 
     private function getPrimaryColumnsOfTable($tableName)
     {
-        $sth = $this->pdohFrom->getPdo()->prepare("SHOW COLUMNS FROM {$tableName}");
-        $sth->execute();
+        try {
+            $sth = $this->pdohFrom->getPdo()->prepare("SHOW COLUMNS FROM `{$tableName}`");
+            $sth->execute();
+        } catch (\PDOException $exception) {
+            Logger::log("SHOW COLUMNS FROM {$tableName} \n", 'red');
+            Logger::log($exception, 'red', null, 3);
+            return [];
+        }
 
         $columns = $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, PrimaryColumn::class);
 
