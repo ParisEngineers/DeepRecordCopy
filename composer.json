@@ -1,0 +1,24 @@
+{
+    "name": "ParisEngineers/deep-record-copy",
+    "description": "Copy record from one database to another database.",
+    "keywords": ["copy", "record", "database", "dependencies"],
+    "license": "Beerware",
+    "authors": [
+        {
+            "name": "Mateusz Bochen",
+            "email": "mbochen@parisengineers.pl"
+        }
+    ],
+    "type": "project",
+    "require": {
+		"php": ">=5.3"
+    },
+	"require-dev": {
+		"phpunit/phpunit": "5.2.*"
+    },
+	"autoload": {
+        "psr-4": {
+            "ParisEngineers\\DeepRecordCopy\\": "src/"
+        }
+    }
+}
