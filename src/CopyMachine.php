@@ -32,6 +32,10 @@ class CopyMachine
      */
     private $isDownloaded = [];
 
+    private $getReferencesByColumnNameCollection = [];
+
+    private $showColumnsFromCollection = [];
+
     public function __construct(DBUser $from)
     {
         $this->from = $from;
@@ -51,14 +55,14 @@ class CopyMachine
     public function selectRecordFrom($tableName, $columnName, $recordId, $isForeign = false)
     {
         if ((!$tableName || !$columnName || !$recordId)) {
-            Logger::log("Błędne argumenty dla selectRecordFrom \n", 'red', null, 1);
+            Logger::log("Błędne argumenty dla selectRecordFrom \n", 'red', null, 2);
             return true;
         }
 
         $key = $tableName.'-'.$columnName.'-'.$recordId;
 
         if (isset($this->isDownloaded[$key])) {
-            Logger::log("Wartość dla $key już była pobrana \n", null, null, 2);
+            Logger::log("Wartość dla $key już była pobrana \n", 'green', null, 3);
             return true;
         }
 
@@ -171,22 +175,29 @@ class CopyMachine
 
     private function getPrimaryColumnsOfTable($tableName)
     {
-        try {
-            $sth = $this->pdohFrom->getPdo()->prepare("SHOW COLUMNS FROM `{$tableName}`");
-            $sth->execute();
-        } catch (\PDOException $exception) {
-            Logger::log("SHOW COLUMNS FROM {$tableName} \n", 'red');
-            Logger::log($exception, 'red', null, 3);
-            return [];
-        }
+        if (isset($this->showColumnsFromCollection[$tableName])) {
+            Logger::log("SHOW COLUMNS FROM {$tableName} Cache \n", 'green', null, 2);
+            $columns = $this->showColumnsFromCollection[$tableName];
+        } else {
 
-        $columns = $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, PrimaryColumn::getClassName());
+            try {
+                $sth = $this->pdohFrom->getPdo()->prepare("SHOW COLUMNS FROM `{$tableName}`");
+                $sth->execute();
+            } catch (\PDOException $exception) {
+                Logger::log("SHOW COLUMNS FROM {$tableName} \n", 'red');
+                Logger::log($exception, 'red', null, 3);
+                return [];
+            }
+
+            $columns = $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, PrimaryColumn::getClassName());
+            $this->showColumnsFromCollection[$tableName] = $columns;
+        }
 
         if(empty($columns)) {
             return [];
         }
-        $collection = [];
 
+        $collection = [];
         /** @var \ParisEngineers\DeepRecordCopy\PrimaryColumn $column */
         foreach ($columns as $column) {
             if ($column->getKey() === PrimaryColumn::PRIMARY_KEY) {
@@ -205,9 +216,14 @@ class CopyMachine
      */
     private function getReferencesByColumnName($tableName, $columnName)
     {
-        $sth = $this->pdohFrom->getPdo()->prepare("SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM
-            information_schema.KEY_COLUMN_USAGE 
-            WHERE REFERENCED_TABLE_NAME = :tableName AND REFERENCED_COLUMN_NAME = :columnName AND TABLE_SCHEMA = :schema ");
+        $key = $tableName.'-'.$columnName.'-'.$this->from->getName();
+
+        if  (isset($this->getReferencesByColumnNameCollection[$key])) {
+            Logger::log("information_schema.KEY_COLUMN_USAGE From cache \n", 'green', null, 2);
+            return $this->getReferencesByColumnNameCollection[$key];
+        }
+
+        $sth = $this->pdohFrom->getPdo()->prepare("SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_NAME = :tableName AND REFERENCED_COLUMN_NAME = :columnName AND TABLE_SCHEMA = :schema ");
 
         $sth->execute([
             ':tableName' => $tableName,
@@ -215,12 +231,13 @@ class CopyMachine
             ':schema' => $this->from->getName(),
         ]);
 
-        return $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, Reference::getClassName());
+        $data = $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, Reference::getClassName());
+        $this->getReferencesByColumnNameCollection[$key] = $data;
+        return $this->getReferencesByColumnNameCollection[$key];
     }
 
     private function getForeignReferences(ForeignKey $foreignKey, array $record)
     {
         $this->selectRecordFrom($foreignKey->getReferencedTableName(), $foreignKey->getReferencedColumnName(), $record[$foreignKey->getColumnName()], true);
-
     }
 }
