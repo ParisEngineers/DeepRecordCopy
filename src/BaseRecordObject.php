@@ -11,6 +11,16 @@ namespace ParisEngineers\DeepRecordCopy;
 
 abstract class BaseRecordObject
 {
+    /**
+     * For Keep Compatibility With PHP 5.4
+     * in php5.4 cant use ClasName::class
+    */
+    public static function getClassName()
+    {
+        return get_called_class();
+    }
+
+
     public function __set($propName, $propValue)
     {
         $prop = $this->toCamelCase($propName);

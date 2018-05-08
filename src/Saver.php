@@ -158,7 +158,7 @@ class Saver
         $newData = [];
         $oldData = $saveRecordObject->getData();
         $primaryColumnsCollection = [];
-        $columns = $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, PrimaryColumn::class);
+        $columns = $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, PrimaryColumn::getClassName());
 
         if (empty($columns)) {
             Logger::log('Nie ma kolumn', 'red');

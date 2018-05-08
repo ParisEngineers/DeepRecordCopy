@@ -20,4 +20,9 @@ class BaseRecordObjectTest extends PHPUnit_Framework_TestCase
         $this->assertEquals(10, $foreignKey->getReferencedColumnName());
 
     }
+
+    public function testGetNmae()
+    {
+        $this->assertEquals('ParisEngineers\DeepRecordCopy\ForeignKey', ForeignKey::getClassName());
+    }
 }

@@ -106,7 +106,7 @@ class CopyMachine
             ':dbName' => $this->from->getName(),
             ':tableName' => $tableName,
         ]);
-        return $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, ForeignKey::class);
+        return $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, ForeignKey::getClassName());
     }
 
     private function findReferencesOfTable($tableName, $primaryColumnsCollection)
@@ -180,7 +180,7 @@ class CopyMachine
             return [];
         }
 
-        $columns = $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, PrimaryColumn::class);
+        $columns = $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, PrimaryColumn::getClassName());
 
         if(empty($columns)) {
             return [];
@@ -215,7 +215,7 @@ class CopyMachine
             ':schema' => $this->from->getName(),
         ]);
 
-        return $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, Reference::class);
+        return $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, Reference::getClassName());
     }
 
     private function getForeignReferences(ForeignKey $foreignKey, array $record)
