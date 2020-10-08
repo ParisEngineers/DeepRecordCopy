@@ -13,6 +13,7 @@ class SaveRecordsManger
 {
     private $collectionExist = [];
     private $collection = [];
+    private $foreignCollection = [];
 
 
     /**
@@ -21,31 +22,17 @@ class SaveRecordsManger
      *
      * @return bool
      */
-    public function add(SaveRecordObject $saveRecord, $isForeign)
+    public function add(SaveRecordObject $saveRecord)
     {
-        $iNeedToAdd = true;
         $key = $saveRecord->getKey();
 
-        if ($isForeign && isset($this->collectionExist[$key])) {
-            if ($this->collection[0]->getKey() !== $key) {
-                $this->removeFromCollection($key);
-                Logger::log("Klucz istnieje, ale nie jest na poczatku tablicy usuwamy  {$key} \n");
-            } else {
-               $iNeedToAdd = false;
-                Logger::log("Klucz istnieje, ale jest na poczatku tablicy {$key} \n");
-            }
+        if (isset($this->collectionExist[$key])) {
+            Logger::log("Klucz istnieje {$key} \n");
+            return true;
         }
 
-        if ($isForeign && $iNeedToAdd) {
-            Logger::log("Dodaje do zapisania na poczatek tablicy {$key} \n");
-            array_unshift($this->collection, $saveRecord);
-        } else {
-            if (!isset($this->collectionExist[$key])) {
-                Logger::log("Dodaje do zapisania na Koniec tablicy {$key} \n");
-                $this->collection[] = $saveRecord;
-            }
-        }
 
+        $this->collection[] = $saveRecord;
         $this->collectionExist[$key] = true;
 
         return true;
@@ -59,13 +46,41 @@ class SaveRecordsManger
         return $this->collection;
     }
 
-
-    private function removeFromCollection($key)
+    /**
+     * Is a accessor for private property with name is collectionExist and returned value which is currently set.
+     * Value for this property is set by constructor and type of it must be array type
+     * @return array
+     * @author Mateusz Bochen
+     */
+    public function getCollectionExist()
     {
-        foreach ($this->collection as $storeKey => $storeItem) {
-            if ($storeItem->getKey() === $key) {
-                unset($this->collection[$storeKey]);
-            }
-        }
+        return $this->collectionExist;
+    }
+
+    /**
+     * @param array $collectionExist
+     */
+    public function setCollectionExist($collectionExist)
+    {
+        $this->collectionExist = $collectionExist;
+    }
+
+    /**
+     * Is a accessor for private property with name is foreignCollection and returned value which is currently set.
+     * Value for this property is set by constructor and type of it must be array type
+     * @return array
+     * @author Mateusz Bochen
+     */
+    public function getForeignCollection()
+    {
+        return $this->foreignCollection;
+    }
+
+    /**
+     * @param array $foreignCollection
+     */
+    public function setForeignCollection($foreignCollection)
+    {
+        $this->foreignCollection = $foreignCollection;
     }
 }

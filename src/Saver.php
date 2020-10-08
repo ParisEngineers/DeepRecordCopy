@@ -9,6 +9,9 @@
 namespace ParisEngineers\DeepRecordCopy;
 
 
+use PDO;
+use PDOException;
+
 class Saver
 {
     /**
@@ -18,11 +21,35 @@ class Saver
     private $pdohTo;
     private $lastCount = 0;
     private $sameLastCountCount = 0;
+    /** @var SaveRecordsManger */
+    private $collectionManager;
+    private $foreignInserted = [];
 
     public function __construct(DBUser $to)
     {
         $this->pdohTo = new PdoConnector($to);
     }
+
+    /**
+     * Is a accessor for private property with name is collectionManager and returned value which is currently set.
+     * Value for this property is set by constructor and type of it must be mixed type
+     * @return mixed
+     * @author Mateusz Bochen
+     */
+    public function getCollectionManager()
+    {
+        return $this->collectionManager;
+    }
+
+    /**
+     * @param mixed $collectionManager
+     */
+    public function setCollectionManager($collectionManager)
+    {
+        $this->collectionManager = $collectionManager;
+    }
+
+
 
     public function setCollection(array $collection)
     {
@@ -40,70 +67,124 @@ class Saver
             return true;
         }
         $i = 0;
-        $lastResults = true;
-        /** @var \ParisEngineers\DeepRecordCopy\SaveRecordObject $saveRecordObject */
+
         while (count($this->collection) !== 0) {
-            Logger::log("Index {$i} \n");
-            $saveRecordObject = $this->collection[$i];
-            if ($this->createInsertQuery($saveRecordObject)) {
-                Logger::log("Zapisano {$saveRecordObject->getKey()} \n", 'green');
-                unset($this->collection[$i]);
-                $this->collection = array_values($this->collection);
-                if ($lastResults === false) {
-                    Logger::log("Wraca bo ostani byl nie zapisany  \n", 'blue', null, 2);
-                    $i = -1;
-                }
 
-                $lastResults = true;
-            } else {
+            $object = $this->collection[$i];
+            $foreigners = $object->getForeignColumnsList();
 
-                if ($lastResults === true) {
-                    Logger::log("Wraca bo nie udalo sie zapisac ale ostatni byl zapisany  \n", 'blue', null, 2);
-                    $i = -1;
-                }
-
-                $lastResults = false;
+            if (count($foreigners)) {
+                $this->insertForeignValue($object);
             }
 
-            $count = count($this->collection);
 
-            Logger::log("Liczba w kolejce: $count  \n", 'cyan', null, 2);
+            $this->createInsertQuery($object);
+            unset($this->collection[$i]);
             $i++;
+        }
+    }
 
-            if($i >= $count) {
-                if ($this->lastCount === $count) {
-                    $this->sameLastCountCount++;
-                }
-                $this->lastCount = $count;
-                $i = 0;
+
+    private function insertForeignValue(SaveRecordObject $object)
+    {
+        Logger::log("Adding Foreign Value: {$object->getTable()} {$object->getKey()}\n", 'yellow');
+
+        $foreignersData = $this->collectionManager->getForeignCollection();
+        $foreigners = $object->getForeignColumnsList();
+
+        $data = $object->getData();
+
+        foreach ($foreigners as $keyObjectKey => $foreign) {
+            $value = $data[$foreign->getColumnName()];
+
+            if ($value === null) {
+                continue;
             }
 
-            if ($this->sameLastCountCount >= 5) {
-                break;
+            $key = $this->getSelectKey($foreign->getReferencedTableName(), $foreign->getReferencedColumnName(), $value);
+
+            if (isset($this->foreignInserted[$key])) {
+                Logger::log("Key OK {$key}\n", 'blue');
+                continue;
+            }
+
+
+            if (isset($foreignersData[$key])) {
+                $foreignData = $foreignersData[$key]['data'];
+
+                if ($this->saveForeignData($foreignData, $key)) {
+                    unset($foreigners[$keyObjectKey]);
+                    $object->setForeignColumnsList($foreigners);
+                }
+
+            } else {
+                Logger::log("Key not found {$key}\n", 'red');
             }
         }
     }
 
+    /**
+     * @param string $tableName
+     * @param string $columnName
+     * @param string $value
+     * @return string
+     */
+    private function getSelectKey($tableName, $columnName, $value)
+    {
+        return $tableName . '-' . $columnName . '-' . $value;
+    }
+
+
     private function createInsertQuery(SaveRecordObject $saveRecordObject, $isRetry = false)
     {
-        $toReturn = true;
-        Logger::log("SELECT * FROM {$saveRecordObject->getTable()} WHERE {$saveRecordObject->getWhere()}; \n", null, null, 3);
-
-        $data = $saveRecordObject->getData();
-
         if(!$this->tableExist($saveRecordObject->getTable())) {
             Logger::log("Table {$saveRecordObject->getTable()} not exist \n");
             return true;
         }
 
-        try {
-            $sth = $this->pdohTo->getPdo()->prepare("REPLACE INTO {$saveRecordObject->getTable()} SET {$saveRecordObject->getSet()} ");
-            $sth->execute($data);
-        }catch (\PDOException $e) {
-            $toReturn = $this->insertFail($saveRecordObject, $isRetry);
+
+        $toReturn = true;
+        $recordExist = "SELECT 1 FROM {$saveRecordObject->getTable()} WHERE {$saveRecordObject->getWhere()}";
+
+        Logger::log($recordExist, null, null, 3);
+
+        $data = $saveRecordObject->getData();
+
+        $sth = $this->pdohTo->getPdo()->prepare($recordExist);
+        $sth->execute($data);
+        $recordExist = $sth->fetchAll();
+
+
+        if (count($recordExist)) {
+            $recordExist = true;
+        } else {
+            $recordExist = false;
         }
-        return $toReturn;
+
+
+
+        if ($recordExist) {
+            Logger::log("Record exist update\n", 'green');
+            $this->updateQuery($saveRecordObject);
+        } else {
+            Logger::log("Record NOT exist create new\n", 'green');
+
+            $sql = "INSERT INTO {$saveRecordObject->getTable()} ({$saveRecordObject->getInsertColumns()}) VALUES ({$saveRecordObject->getInsertValues()})";
+
+            try {
+                $sth = $this->pdohTo->getPdo()
+                    ->prepare($sql);
+                $sth->execute($data);
+                Logger::log($sql."\n", 'green');
+            } catch (PDOException $e) {
+                Logger::log($sql . "\n", 'red');
+                throw $e;
+            }
+        }
+
     }
+
+
 
     /**
      * @param $tableName
@@ -113,40 +194,48 @@ class Saver
     private function tableExist($tableName)
     {
         try {
-            $sth = $this->pdohTo->getPdo()->prepare("SELECT 1 FROM {$tableName}");
+            $sth = $this->pdohTo->getPdo()->prepare("SELECT 1 FROM `{$tableName}` LIMIT 1");
             $sth->execute();
             return true;
-        } catch (\PDOException $e) {
+        } catch (PDOException $e) {
             return false;
         }
     }
 
     /**
-     * @param \ParisEngineers\DeepRecordCopy\SaveRecordObject $saveRecordObject
+     * @param SaveRecordObject $saveRecordObject
      * @param bool $isRetry
      *
      * @return bool
      */
-    private function insertFail(SaveRecordObject $saveRecordObject, $isRetry = false)
+    private function updateQuery(SaveRecordObject $saveRecordObject, $isRetry = false)
     {
         $toReturn = true;
-        Logger::log("INSERT Fail Try update \n", 'red');
         $updateSth = null;
         $set = $saveRecordObject->getSet(true);
         $data = $saveRecordObject->getData(true);
-        try {
-            $updateSth = $this->pdohTo->getPdo()->prepare("UPDATE {$saveRecordObject->getTable()} SET {$set} WHERE {$saveRecordObject->getWhere()}");
 
+        $sql = "UPDATE {$saveRecordObject->getTable()} SET {$set} WHERE {$saveRecordObject->getWhere()}";
+
+        try {
+            $updateSth = $this->pdohTo->getPdo()->prepare($sql);
             $updateSth->execute($data);
-        } catch (\PDOException $exception) {
+
+            Logger::log($sql."\n", 'green');
+
+        } catch (PDOException $exception) {
+            Logger::log($sql."\n", 'red');
+            throw $exception;
             Logger::log("UPDATE Fail try again \n", 'red');
             Logger::log($set, 'red', null, 2);
             Logger::log($data, 'red', null, 2);
             if (!$isRetry) {
                 $toReturn = $this->updateFail($saveRecordObject);
             } else {
+                throw $exception;
                 $toReturn = false;
             }
+
         }
         return $toReturn;
     }
@@ -158,7 +247,7 @@ class Saver
         $newData = [];
         $oldData = $saveRecordObject->getData();
         $primaryColumnsCollection = [];
-        $columns = $sth->fetchAll(\PDO::FETCH_CLASS | \PDO::FETCH_PROPS_LATE, PrimaryColumn::getClassName());
+        $columns = $sth->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, PrimaryColumn::getClassName());
 
         if (empty($columns)) {
             Logger::log('Nie ma kolumn', 'red');
@@ -167,14 +256,27 @@ class Saver
         /** @var PrimaryColumn $column */
         foreach ($columns as $column) {
             $filed = $column->getField();
-            $newData[$filed] = $oldData[$filed];
+            if (isset($oldData[$filed])) {
+                $newData[$filed] = $oldData[$filed];
+            }
 
             if($column->getKey() === PrimaryColumn::PRIMARY_KEY) {
                 $primaryColumnsCollection[] = $column;
             }
         }
+    }
 
-        $newSaveRecordObject = new SaveRecordObject($saveRecordObject->getTable(), $newData, $primaryColumnsCollection);
-        return $this->createInsertQuery($newSaveRecordObject, true);
+    /**
+     * @param $foreignData
+     * @param $key
+     * @return bool
+     */
+    private function saveForeignData($foreignData, $key)
+    {
+        $this->insertForeignValue($foreignData);
+
+        $this->createInsertQuery($foreignData);
+        $this->foreignInserted[$key] = true;
+        return true;
     }
 }

@@ -24,26 +24,56 @@ class SaveRecordObject
 
     private $primaryColumns = [];
     private $primaryColumnsList = [];
-
+    private $foreignColumnsList = [];
 
     /**
      * SaveRecordObject constructor.
      *
      * @param string $table
-     * @param array  $data
-     * @param array  $primaryColumns
+     * @param array $data
+     * @param array $primaryColumns
+     * @param $foreignColumnsList
      */
-    public function __construct($table = null, array $data = null, $primaryColumns = array())
+    public function __construct($table, array $data, array $primaryColumns, array $foreignColumnsList)
     {
 
         $this->table = $table;
         $this->data = $data;
         $this->primaryColumns = $primaryColumns;
+        $this->foreignColumnsList = $foreignColumnsList;
         /** @var \ParisEngineers\DeepRecordCopy\PrimaryColumn $primaryColumn */
         foreach ($primaryColumns as $primaryColumn) {
             $this->primaryColumnsList[] = $primaryColumn->getField();
         }
     }
+
+    /**
+     * Is a accessor for private property with name is primaryColumnsList and returned value which is currently set.
+     * Value for this property is set by constructor and type of it must be array type
+     * @return array
+     * @author Mateusz Bochen
+     */
+    public function getPrimaryColumnsList()
+    {
+        return $this->primaryColumnsList;
+    }
+
+    /**
+     * Is a accessor for private property with name is foreignColumnsList and returned value which is currently set.
+     * Value for this property is set by constructor and type of it must be array type
+     * @return ForeignKey[]
+     * @author Mateusz Bochen
+     */
+    public function getForeignColumnsList()
+    {
+        return $this->foreignColumnsList;
+    }
+
+    public function setForeignColumnsList($foreignColumnsList)
+    {
+        return $this->foreignColumnsList = $foreignColumnsList;
+    }
+
 
 
     /**
@@ -126,6 +156,26 @@ class SaveRecordObject
         }
 
         return implode(' AND ', $whereArray);
+    }
+
+    public function getInsertColumns() {
+        $array = [];
+        $keys = array_keys($this->data);
+        foreach($keys as $key) {
+            $array[] = '`' . $key . '`';
+        }
+
+        return implode(', ', $array);
+    }
+
+    public function getInsertValues() {
+        $array = [];
+        $keys = array_keys($this->data);
+        foreach($keys as $key) {
+            $array[] = ':' . $key . '';
+        }
+
+        return implode(', ', $array);
     }
 
 

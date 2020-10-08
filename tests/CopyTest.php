@@ -11,17 +11,22 @@
 class CopyTest extends PHPUnit_Framework_TestCase {
 
     public function testIsThereAnySyntaxError(){
-          $var = new \ParisEngineers\DeepRecordCopy\Copy();
+        $var = new \ParisEngineers\DeepRecordCopy\Copy();
 	    $this->assertTrue(is_object($var));
 	    unset($var);
     }
 
     public function testCopy()
     {
+
+        define('DEEP_RECORD_COPY_DEBUG_LVL', 1);
+
+        //ini_set('xdebug.max_nesting_level', 10000);
+
         $var = new \ParisEngineers\DeepRecordCopy\Copy();
 
-        $var->setFrom('localhost', 'db1', 'root', '');
-        $var->setTo('localhost', 'db2', 'root', '');
-        $var->copy('table', 'id', 1);
+        $var->setFrom(' ', ' ', ' ', ' ');
+        $var->setTo('localhost', 'sss', ' ', ' ');
+        $var->copy('dfsdfs', ' sdfsdfs', 233535);
     }
 }
