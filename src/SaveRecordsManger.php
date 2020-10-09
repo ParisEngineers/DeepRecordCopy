@@ -15,11 +15,8 @@ class SaveRecordsManger
     private $collection = [];
     private $foreignCollection = [];
 
-
     /**
-     * @param $saveRecord
-     * @param bool $isForeign
-     *
+     * @param SaveRecordObject $saveRecord
      * @return bool
      */
     public function add(SaveRecordObject $saveRecord)
@@ -27,10 +24,11 @@ class SaveRecordsManger
         $key = $saveRecord->getKey();
 
         if (isset($this->collectionExist[$key])) {
-            Logger::log("Klucz istnieje {$key} \n");
+            Logger::log("Pobieranie: Klucz istnieje {$key} - nie powinno doojsc do takiej sytuacji\n", 'red', null, 2);
             return true;
         }
 
+        Logger::log("Pobieranie dodano do zapisu {$key}\n", 'yellow');
 
         $this->collection[] = $saveRecord;
         $this->collectionExist[$key] = true;

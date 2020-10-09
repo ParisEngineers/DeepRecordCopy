@@ -18,15 +18,12 @@ class CopyTest extends PHPUnit_Framework_TestCase {
 
     public function testCopy()
     {
-
-        define('DEEP_RECORD_COPY_DEBUG_LVL', 1);
-
-        //ini_set('xdebug.max_nesting_level', 10000);
-
         $var = new \ParisEngineers\DeepRecordCopy\Copy();
-
-        $var->setFrom(' ', ' ', ' ', ' ');
-        $var->setTo('localhost', 'sss', ' ', ' ');
-        $var->copy('dfsdfs', ' sdfsdfs', 233535);
+        $var->setFrom('localhost', 'db1', 'root', '');
+        $var->setTo('localhost', 'db2', 'root', '');
+        $var->setInfinityLoopTables([
+            'omg_self_related_table'
+        ]);
+        $var->copy('records_from_this_table_will_be_copied', 'id', 1);
     }
 }

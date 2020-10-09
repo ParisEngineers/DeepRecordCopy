@@ -13,6 +13,8 @@ class Copy
     private $from;
     private $to;
 
+    private $infinityLoopTables = [];
+
     /**
      * Set Db user and other credentials for connect to source db
      *
@@ -69,8 +71,39 @@ class Copy
         $copyMachine->selectRecordFrom($tableName, $columnName, $recordId);
 
         $saver = new Saver($this->to);
+        $saver->setInfinityLoopTables($this->infinityLoopTables);
         $saver->setCollectionManager($copyMachine->getSaveRecordsManager());
         $saver->setCollection($copyMachine->getSaveRecordsManager()->getCollection());
         $saver->save();
+    }
+
+    /**
+     * Is a accessor for private property with name is infinityLoopTables and returned value which is currently set.
+     * Value for this property is set by constructor and type of it must be array type
+     * @return array
+     * @author Mateusz Bochen
+     */
+    public function getInfinityLoopTables()
+    {
+        return $this->infinityLoopTables;
+    }
+
+    /**
+     * @param array $infinityLoopTables
+     */
+    public function setInfinityLoopTables($infinityLoopTables)
+    {
+        $this->infinityLoopTables = $infinityLoopTables;
+    }
+
+    public function copyMany($tableName, $columnName, array $recordsIds)
+    {
+        if (empty($recordsIds)) {
+            return false;
+        }
+
+        $impl = implode(', ', $recordsIds);
+
+        $this->copy($tableName, $columnName, $impl);
     }
 }

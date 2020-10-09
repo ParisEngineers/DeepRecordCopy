@@ -8,15 +8,11 @@
 
 namespace ParisEngineers\DeepRecordCopy;
 
-use ParisEngineers\DeepRecordCopy;
 use PDO;
 use PDOException;
 
 class CopyMachine
 {
-
-    private $foreignTableToSkip = '';
-
     /**
      * @var DBUser
      */
@@ -31,16 +27,14 @@ class CopyMachine
      * @var SaveRecordsManger
      */
     private $saveRecordsManger;
-
     private $getReferencesByColumnNameCollection = [];
-
     private $showColumnsFromCollection = [];
-
     private $foreignRecordsCollection = [];
     private $foreignRecordsCollectionKeys = [];
-
     private $primaryColumns = [];
     private $foreignColumns = [];
+    private $sha1Sqls = [];
+    private $sha1SqlsResults = [];
 
     public function __construct(DBUser $from)
     {
@@ -52,24 +46,23 @@ class CopyMachine
     /**
      * @param        $tableName
      * @param string $columnName
-     * @param int    $recordId
-     *
-     * @param bool   $isForeign
+     * @param int $recordId
      *
      * @return bool
      */
     public function selectRecordFrom($tableName, $columnName, $recordId)
     {
-        $this->foreignTableToSkip = $tableName;
         $primaryColumnsOfTable = $this->getPrimaryColumnsOfTable($tableName);
-
-
         $foreignKeyCollection = $this->findForeignKeyOfTable($tableName);
         $referencesOfTable = $this->findReferencesOfTable($tableName, $primaryColumnsOfTable);
 
-        $records = $this->getRecordToCopy($tableName, $columnName, $recordId);
+        $records = $this->getRecordToCopy($tableName, $columnName, $recordId, 'a');
 
-        $this->fetchData($tableName, $records, $foreignKeyCollection, $referencesOfTable, $primaryColumnsOfTable, true);
+        if ($records === null) {
+            return true;
+        }
+
+        $this->fetchData($tableName, $records, $foreignKeyCollection, $referencesOfTable, $primaryColumnsOfTable);
         $this->saveRecordsManger->setForeignCollection($this->foreignRecordsCollection);
         return true;
     }
@@ -129,35 +122,68 @@ class CopyMachine
      *
      * @return array
      */
-    private function getRecordToCopy($tableName, $columnName, $recordId)
+    private function getRecordToCopy($tableName, $columnName, $recordId, $type = 'r')
     {
-        $sth = $this->pdohFrom->getPdo()->prepare("SELECT * FROM `{$tableName}` WHERE `{$columnName}` IN(:recordId)");
+        if (!$tableName) {
+            Logger::log("Pobieranie: PUSTA NAZWA TABELI! \n", 'red', null, 3);
+            return null;
+        }
 
-        $sth->execute([
-            ':recordId' => $recordId,
-        ]);
+        $inArray = [];
+        $explode = explode(',', $recordId);
+        foreach ($explode as $item) {
+            $inArray[] = '\''.trim($item).'\'';
+        }
 
-        return $sth->fetchAll(PDO::FETCH_ASSOC);
+        $in = implode(',', $inArray);
+        $sql = "SELECT * FROM `{$tableName}` WHERE `{$columnName}` IN($in)";
+        $sh1 = sha1($sql);
+
+        if (isset($this->sha1Sqls[$type][$sh1])) {
+            Logger::log(
+                "Pobieranie:  $type - $sql - return cached array this record is already done \n",
+                'green',
+                null,
+                2
+            );
+            return null; // anti infinity loop protection
+        }
+
+        if (isset($this->sha1SqlsResults[$sh1])) {
+            $records = $this->sha1SqlsResults[$sh1];
+            Logger::log("Pobieranie:  $type - $sql - records form cache \n", 'green', null, 2);
+        } else {
+            $sth = $this->pdohFrom->getPdo()
+                ->prepare($sql);
+            $sth->execute();
+            $records = $sth->fetchAll(PDO::FETCH_ASSOC);
+            $this->sha1SqlsResults[$sh1] = $records;
+            Logger::log("Pobieranie:  $type - $sql \n", 'blue');
+        }
+
+        $this->sha1Sqls[$type][$sh1] = $records;
+        return $this->sha1Sqls[$type][$sh1];
     }
-
 
     private function getPrimaryColumnsOfTable($tableName)
     {
+        if (!$tableName) {
+            return [];
+        }
+
         if (isset($this->primaryColumns[$tableName])) {
             return $this->primaryColumns[$tableName];
         }
 
-
         if (isset($this->showColumnsFromCollection[$tableName])) {
-            Logger::log("SHOW COLUMNS FROM {$tableName} Cache \n", 'green', null, 2);
+            Logger::log("Pobieranie: SHOW COLUMNS FROM {$tableName} Cache \n", 'green', null, 2);
             $columns = $this->showColumnsFromCollection[$tableName];
         } else {
-
             try {
                 $sth = $this->pdohFrom->getPdo()->prepare("SHOW COLUMNS FROM `{$tableName}`");
                 $sth->execute();
             } catch (PDOException $exception) {
-                Logger::log("SHOW COLUMNS FROM {$tableName} \n", 'red');
+                Logger::log("Pobieranie: : ERROR SHOW COLUMNS FROM {$tableName} use log lvl3 to see more details\n", 'red');
                 Logger::log($exception, 'red', null, 3);
                 return [];
             }
@@ -194,7 +220,7 @@ class CopyMachine
         $key = $tableName.'-'.$columnName.'-'.$this->from->getName();
 
         if  (isset($this->getReferencesByColumnNameCollection[$key])) {
-            Logger::log("information_schema.KEY_COLUMN_USAGE From cache \n", 'green', null, 2);
+            Logger::log("Pobieranie: information_schema.KEY_COLUMN_USAGE From cache \n", 'green', null, 2);
             return $this->getReferencesByColumnNameCollection[$key];
         }
 
@@ -224,13 +250,24 @@ class CopyMachine
             $records = $this->getRecordToCopy(
                 $reference->getTableName(),
                 $reference->getColumnName(),
-                $data[$reference->getReferencedColumnName()]
+                $data[$reference->getReferencedColumnName()],
+                'b'
             );
+
+            if ($records === null) {
+                continue;
+            }
+
             $foreignKeyCollection = $this->findForeignKeyOfTable($reference->getTableName());
 
             if (count($records)) {
-                $this->fetchData($reference->getTableName(), $records, $foreignKeyCollection, $referencesOfTable,
-                    $primaryColumnsOfTable, false);
+                $this->fetchData(
+                    $reference->getTableName(),
+                    $records,
+                    $foreignKeyCollection,
+                    $referencesOfTable,
+                    $primaryColumnsOfTable
+                );
             }
         }
     }
@@ -251,26 +288,21 @@ class CopyMachine
         }
     }
 
-
     /**
      * @param ForeignKey[] $foreignKeys
      * @param array $record
+     * @return array
      */
     private function collectForeignRecords(array $foreignKeys, array $record)
     {
         if (!count($foreignKeys)) {
-            return;
+            return [];
         }
 
         $localForeignCollection = [];
 
         foreach ($foreignKeys as $foreignKey) {
             if (isset($record[$foreignKey->getColumnName()]) && $record[$foreignKey->getColumnName()] !== null) {
-
-                if ($this->foreignTableToSkip === $foreignKey->getReferencedTableName()) {
-                    // continue;
-                }
-
                 $selectRow = new SelectRowRecord(
                     $foreignKey->getReferencedTableName(),
                     $foreignKey->getReferencedColumnName(),
@@ -280,8 +312,6 @@ class CopyMachine
                 if ($this->checkForeignSelect($selectRow)) {
                     $localForeignCollection[] = $selectRow;
                     $this->addToForeignCollection($selectRow);
-                } else {
-                    // $this->resortForeignCollection($selectRow);
                 }
             }
         }
@@ -304,14 +334,18 @@ class CopyMachine
     private function checkForeigners(SelectRowRecord $record)
     {
         $foreignKeyCollection = $this->findForeignKeyOfTable($record->getTableFrom());
-        $recordsToCopy = $this->getRecordToCopy($record->getTableFrom(), $record->getTableColumn(), $record->getWhereValue());
+        $recordsToCopy = $this->getRecordToCopy(
+            $record->getTableFrom(),
+            $record->getTableColumn(),
+            $record->getWhereValue(),
+            'c'
+        );
 
-        if (!count($recordsToCopy)) {
+        if ($recordsToCopy === null || !count($recordsToCopy)) {
             return;
         }
         foreach ($recordsToCopy as $recordToCopy) {
             $foreignCollection = $this->collectForeignRecords($foreignKeyCollection, $recordToCopy);
-
             if (count($foreignCollection)) {
                 foreach ($foreignCollection as $foreignRecord) {
                     $this->checkForeigners($foreignRecord);
@@ -332,37 +366,32 @@ class CopyMachine
     private function addToForeignCollection(SelectRowRecord $selectRow)
     {
         $key = $this->getSelectKey($selectRow);
-
         $records =  $this->getRecordToCopy(
             $selectRow->getTableFrom(),
             $selectRow->getTableColumn(),
-            $selectRow->getWhereValue()
+            $selectRow->getWhereValue(),
+            'f'
         );
+
+        if ($records === null) {
+            return;
+        }
 
         $foreignKeyCollection = $this->findForeignKeyOfTable($selectRow->getTableFrom());
         $primaryColumnsOfTable = $this->getPrimaryColumnsOfTable($selectRow->getTableFrom());
+        $saveRecordObject = null;
+
         foreach ($records as $data) {
             $saveRecordObject = new SaveRecordObject($selectRow->getTableFrom(), $data, $primaryColumnsOfTable, $foreignKeyCollection);
         }
-
-        $this->foreignRecordsCollection[$key] = [
-            'record' => $selectRow,
-            'key' => $key,
-            'data' => $saveRecordObject,
-        ];
-    }
-
-    private function resortForeignCollection(SelectRowRecord $selectRow)
-    {
-        $key = $this->getSelectKey($selectRow);
-        $max = count($this->foreignRecordsCollection);
-        for ($i = 0; $i < $max; $i++) {
-            if ($this->foreignRecordsCollection[$i]['key'] === $key) {
-                unset($this->foreignRecordsCollection[$i]);
-                break;
-            }
+        if ($saveRecordObject) {
+            Logger::log("Pobieranie: Dodano do zapisu jako FOREIGN {$key}\n", 'yellow');
+            $this->foreignRecordsCollection[$key] = [
+                'record' => $selectRow,
+                'key' => $key,
+                'data' => $saveRecordObject,
+            ];
         }
-        $this->addToForeignCollection($selectRow);
     }
 
     /**
@@ -372,8 +401,7 @@ class CopyMachine
      * @param array $referencesOfTable
      * @param array $primaryColumnsOfTable
      */
-    private function fetchData($tableName, array $records, array $foreignKeyCollection, array $referencesOfTable,
-        array $primaryColumnsOfTable, $checkReferences)
+    private function fetchData($tableName, array $records, array $foreignKeyCollection, array $referencesOfTable, array $primaryColumnsOfTable)
     {
         foreach ($records as $record) {
             $foreignCollection = $this->collectForeignRecords($foreignKeyCollection, $record);
@@ -386,11 +414,8 @@ class CopyMachine
 
             $saveRecordObject = new SaveRecordObject($tableName, $record, $primaryColumnsOfTable, $foreignKeyCollection);
             $this->saveRecordsManger->add($saveRecordObject);
-
-            if ($checkReferences) {
-                $this->getForeignRecordsForReferencesTables($referencesOfTable, $record);
-                $this->getReferencesData($referencesOfTable, $record);
-            }
+            $this->getForeignRecordsForReferencesTables($referencesOfTable, $record);
+            $this->getReferencesData($referencesOfTable, $record);
         }
     }
 }

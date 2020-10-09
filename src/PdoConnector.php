@@ -15,11 +15,13 @@ class PdoConnector
      * @var \PDO
      */
     protected $pdoh;
+    protected $dbUser;
 
     public function __construct(DBUser $dbUser)
     {
         $dsn = 'mysql:host='.$dbUser->getHost();
         $dsn .= ';dbname='.$dbUser->getName();
+        $this->dbUser = $dbUser;
 
         $this->pdoh = new \PDO($dsn, $dbUser->getUser(), $dbUser->getPassword());
         $this->pdoh->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
@@ -33,5 +35,10 @@ class PdoConnector
     public function close()
     {
         $this->pdoh = null;
+    }
+
+    public function getDbName()
+    {
+        return $this->dbUser->getName();
     }
 }
