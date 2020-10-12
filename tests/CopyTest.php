@@ -11,7 +11,7 @@
 class CopyTest extends PHPUnit_Framework_TestCase {
 
     public function testIsThereAnySyntaxError(){
-          $var = new \ParisEngineers\DeepRecordCopy\Copy();
+        $var = new \ParisEngineers\DeepRecordCopy\Copy();
 	    $this->assertTrue(is_object($var));
 	    unset($var);
     }
@@ -19,9 +19,11 @@ class CopyTest extends PHPUnit_Framework_TestCase {
     public function testCopy()
     {
         $var = new \ParisEngineers\DeepRecordCopy\Copy();
-
         $var->setFrom('localhost', 'db1', 'root', '');
         $var->setTo('localhost', 'db2', 'root', '');
-        $var->copy('table', 'id', 1);
+        $var->setInfinityLoopTables([
+            'omg_self_related_table'
+        ]);
+        $var->copy('records_from_this_table_will_be_copied', 'id', 1);
     }
 }
