@@ -28,7 +28,7 @@ class SaveRecordsManger
             return true;
         }
 
-        Logger::log("Pobieranie dodano do zapisu {$key}\n", 'yellow');
+        Logger::log("Pobieranie dodano do zapisu {$key}\n", 'blue');
 
         $this->collection[] = $saveRecord;
         $this->collectionExist[$key] = true;

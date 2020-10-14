@@ -119,13 +119,13 @@ class CopyMachine
      * @param string $tableName
      * @param string $columnName
      * @param string $recordId
-     *
+     * @param string $type
      * @return array
      */
     private function getRecordToCopy($tableName, $columnName, $recordId, $type = 'r')
     {
         if (!$tableName) {
-            Logger::log("Pobieranie: PUSTA NAZWA TABELI! \n", 'red', null, 3);
+            Logger::log("Pobieranie: PUSTA NAZWA TABELI! \n", 'red', null, 4);
             return null;
         }
 
@@ -142,23 +142,23 @@ class CopyMachine
         if (isset($this->sha1Sqls[$type][$sh1])) {
             Logger::log(
                 "Pobieranie:  $type - $sql - return cached array this record is already done \n",
+                'yellow',
                 'green',
-                null,
-                2
+                3
             );
             return null; // anti infinity loop protection
         }
 
         if (isset($this->sha1SqlsResults[$sh1])) {
             $records = $this->sha1SqlsResults[$sh1];
-            Logger::log("Pobieranie:  $type - $sql - records form cache \n", 'green', null, 2);
+            Logger::log("Pobieranie:  $type - $sql - records form cache \n", 'yellow', 'green', 3);
         } else {
             $sth = $this->pdohFrom->getPdo()
                 ->prepare($sql);
             $sth->execute();
             $records = $sth->fetchAll(PDO::FETCH_ASSOC);
             $this->sha1SqlsResults[$sh1] = $records;
-            Logger::log("Pobieranie:  $type - $sql \n", 'blue');
+            Logger::log("Pobieranie:  $type - $sql \n", 'blue', null, 2);
         }
 
         $this->sha1Sqls[$type][$sh1] = $records;
@@ -176,15 +176,15 @@ class CopyMachine
         }
 
         if (isset($this->showColumnsFromCollection[$tableName])) {
-            Logger::log("Pobieranie: SHOW COLUMNS FROM {$tableName} Cache \n", 'green', null, 2);
+            Logger::log("Pobieranie: SHOW COLUMNS FROM {$tableName} Cache \n", 'green', null, 3);
             $columns = $this->showColumnsFromCollection[$tableName];
         } else {
             try {
                 $sth = $this->pdohFrom->getPdo()->prepare("SHOW COLUMNS FROM `{$tableName}`");
                 $sth->execute();
             } catch (PDOException $exception) {
-                Logger::log("Pobieranie: : ERROR SHOW COLUMNS FROM {$tableName} use log lvl3 to see more details\n", 'red');
-                Logger::log($exception, 'red', null, 3);
+                Logger::log("Pobieranie: : ERROR SHOW COLUMNS FROM {$tableName} use log lvl5 to see more details\n", 'red', null, 4);
+                Logger::log($exception, 'red', null, 5);
                 return [];
             }
 
@@ -220,7 +220,7 @@ class CopyMachine
         $key = $tableName.'-'.$columnName.'-'.$this->from->getName();
 
         if  (isset($this->getReferencesByColumnNameCollection[$key])) {
-            Logger::log("Pobieranie: information_schema.KEY_COLUMN_USAGE From cache \n", 'green', null, 2);
+            Logger::log("Pobieranie: information_schema.KEY_COLUMN_USAGE From cache \n", 'green', null, 4);
             return $this->getReferencesByColumnNameCollection[$key];
         }
 
@@ -385,7 +385,7 @@ class CopyMachine
             $saveRecordObject = new SaveRecordObject($selectRow->getTableFrom(), $data, $primaryColumnsOfTable, $foreignKeyCollection);
         }
         if ($saveRecordObject) {
-            Logger::log("Pobieranie: Dodano do zapisu jako FOREIGN {$key}\n", 'yellow');
+            Logger::log("Pobieranie: Dodano do zapisu jako FOREIGN {$key}\n", 'blue');
             $this->foreignRecordsCollection[$key] = [
                 'record' => $selectRow,
                 'key' => $key,
