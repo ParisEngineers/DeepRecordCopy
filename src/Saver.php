@@ -163,20 +163,42 @@ class Saver
             $sql = "INSERT INTO `{$saveRecordObject->getTable()}` ({$saveRecordObject->getInsertColumns()}) VALUES ({$saveRecordObject->getInsertValues()})";
 
             try {
-                $sth = $this->pdohTo->getPdo()
+                $sth = $this->pdohTo
+                    ->getPdo()
                     ->prepare($sql);
                 $sth->execute($data);
                 Logger::log("ZAPIS: ".$sql."\n", 'green');
             } catch (PDOException $e) {
-                Logger::log("ZAPIS: ".$sql . "\n", 'red', null, 2);
-                Logger::log($e, 'red', null, 3);
-                $this->updateQuery($saveRecordObject);
+
+                if ($this->isForeignKeyIssue($e->getMessage())) {
+                    Logger::log("ZAPIS: Cannot add or update a child row: a foreign key constraint fails\n", 'green', 'red' , 3);
+                    Logger::log("ZAPIS: Disable foreign key checks \n", 'green', 'red' , 3);
+                    $this->pdohTo->getPdo()->prepare("SET FOREIGN_KEY_CHECKS=0;")->execute();
+
+                    try {
+                        $sth = $this->pdohTo->getPdo()
+                            ->prepare($sql);
+                        $sth->execute($data);
+                        Logger::log("ZAPIS: ".$sql."\n", 'green');
+                    } catch (\Exception $exception) {
+                        Logger::log("ZAPIS: ".$sql."\n", 'red');
+                    }
+
+                    $this->pdohTo->getPdo()->prepare("SET FOREIGN_KEY_CHECKS=1;")->execute();
+                    Logger::log("ZAPIS: Enable foreign key checks \n", 'green', 'red' , 3);
+                } else {
+                    Logger::log("ZAPIS: " . $sql . "\n", 'red', null, 2);
+                    Logger::log($e, 'red', null, 3);
+                    $this->updateQuery($saveRecordObject);
+                }
             }
         }
-
     }
 
-
+    public function isForeignKeyIssue($exceptionMessage)
+    {
+        return preg_match('/Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails/i', $exceptionMessage) === 1;
+    }
 
     /**
      * @param $tableName
@@ -234,7 +256,9 @@ class Saver
         if (!in_array($foreignData->getTable(), $this->infinityLoopTables)) {
             $this->insertForeignValue($foreignData);
         }
+
         $this->createInsertQuery($foreignData);
+
         $this->foreignInserted[$key] = true;
         return true;
     }
